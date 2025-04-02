@@ -1,0 +1,10 @@
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+import time
+browser = webdriver.Firefox()
+browser.implicitly_wait(30)
+browser.get('https://weather.com/en-AU/weather/today/l/ASXX0023:1:AS?Goto=Redirected')
+time.sleep(10)
+browser.save_screenshot('screen_shot.png')
+browser.close()  
+

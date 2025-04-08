@@ -25,5 +25,20 @@ def get_10y_gilt_yield():
     else:
         raise Exception("Failed to fetch data")
 
+
+
+def scrape_investing_com():
+    url = "https://www.investing.com/rates-bonds/uk-10-year-bond-yield"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        yield_value = soup.find("span", {"data-test": "instrument-price-last"}).text
+        return yield_value
+    except Exception as e:
+        print(f"Scraping failed: {e}")
+        return None
+
 if __name__ == "__main__":
+    scrape_investing_com()
     get_10y_gilt_yield()

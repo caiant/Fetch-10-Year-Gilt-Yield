@@ -1,10 +1,23 @@
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-import time
-browser = webdriver.Firefox()
-browser.implicitly_wait(30)
-browser.get('https://weather.com/en-AU/weather/today/l/ASXX0023:1:AS?Goto=Redirected')
-time.sleep(10)
-browser.save_screenshot('screen_shot.png')
-browser.close()  
+import requests
+import pandas as pd
+from datetime import datetime
 
+def get_10y_gilt_yield():
+    url = "https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp"
+    params = {
+        "Travel": "NIxSTx",  # BoE’s internal code for yields
+        "SeriesCodes": "IUDSNPY",  # 10-year gilt yield code (verify this)
+        "Datefrom": datetime.today().strftime('%d/%m/%Y'),
+        "Dateto": datetime.today().strftime('%d/%m/%Y'),
+        "CSVF": "TT",  # Request CSV format
+    }
+    response = requests.get(url, params=params)
+    
+    if response.status_code == 200:
+        data = pd.read_csv(pd.compat.StringIO(response.text))
+        latest_yield = data.iloc[-1]["IUDSNPY"]  # Adjust column name
+        print(f"10-year UK gilt yield: {latest_yield}%")
+    else:
+        print("Failed to fetch data")
+
+get_10y_gilt_yield()

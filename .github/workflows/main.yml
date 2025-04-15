@@ -26,9 +26,8 @@ jobs:
 
       - name: Scrape BOE Bank Rate
         id: scrape
-        run: |
-          echo "Running BOE scraper..."
-          python -c "
+        run: python boe_scraper.py
+
 
       - name: Run Market Report
         run: |

@@ -36,9 +36,4 @@ jobs:
             --boe-rate "${{ steps.scrape.outputs.bank_rate }}" \
             --decision-date "${{ steps.scrape.outputs.decision_date }}"
 
-      - name: Upload BOE Verification Screenshot
-        uses: actions/upload-artifact@v3
-        with:
-          name: boe-rate-verification
-          path: screenshots/boe_rate_verification.png
 

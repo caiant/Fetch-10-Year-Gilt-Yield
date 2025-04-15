@@ -50,33 +50,34 @@ def get_boe_rate():
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--window-size=1920,1080")
-        
+
         # Use webdriver_manager to handle ChromeDriver automatically
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        
+
         driver.get("https://www.bankofengland.co.uk")
-        
+
         # Wait for the Bank Rate component to load
         rate_container = WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "div.bank-rate"))
-        
+        )
+
         # Extract the rate and decision date
-        current_rate = WebDriverWait(rate_container, 10).until(
+        current_rate = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, "div.bank-rate__rate"))
         ).text.strip()
-        
-        decision_date = WebDriverWait(rate_container, 10).until(
+
+        decision_date = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, "div.bank-rate__date"))
         ).text.strip()
-        
+
         # Take verification screenshot
         os.makedirs("boe_screenshots", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         rate_container.screenshot(f"boe_screenshots/boe_rate_{timestamp}.png")
-        
+
         driver.quit()
-        
+
         return {
             "Asset": "BOE Bank Rate",
             "Last Price": current_rate,
@@ -84,7 +85,7 @@ def get_boe_rate():
             "Change %": "N/A",
             "Decision Date": decision_date
         }
-        
+
     except Exception as e:
         print(f"Error fetching BOE rate: {e}")
         return {
@@ -94,6 +95,7 @@ def get_boe_rate():
             "Change %": "N/A",
             "Decision Date": "N/A"
         }
+
 
 def get_market_data():
     """Fetch market data with enhanced error handling"""

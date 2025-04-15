@@ -1,22 +1,42 @@
-name: Daily Market Report adding boe
+name: Daily Market Report with BOE
 on:
   workflow_dispatch:  # Allows manual trigger
   schedule:
-    - cron: '30 11 * * *'  # 7:30 AM EST (convert to UTC)
+    - cron: '30 11 * * *'  # 7:30 AM EST (11:30 UTC)
+    
 jobs:
   run_script:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          persist-credentials: true  # Required for pushing changes back
+      
       - name: Set up Python
         uses: actions/setup-python@v3
         with:
           python-version: '3.10'
-      - name: Install Dependencies
-        run: pip install yfinance pandas schedule yagmail pytz
-      - name: Run Script
-        run: python market_report.py
       
-
-
-# Test change
+      - name: Install Dependencies
+        run: |
+          pip install yfinance pandas schedule yagmail pytz
+          pip install selenium pillow webdriver-manager  # Add BOE scraper dependencies
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser  # Install Chrome for Selenium
+      
+      - name: Run Market Report Script
+        run: python market_report1.py
+      
+      - name: Commit and Push Results
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          
+          # Check if there are changes to commit
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Automated update: Market report [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi

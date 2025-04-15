@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Enhanced Market Report with Professional Formatting"""
+"""Enhanced Market Report with BOE Rate and Professional Formatting"""
 
 import yfinance as yf
 import pandas as pd
 import yagmail
 from datetime import datetime
 import pytz
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import time
+import os
 
 # Email credentials (use environment variables in production)
 EMAIL_ADDRESS = "cailin.antonio@glccap.com"
@@ -32,6 +37,37 @@ tickers = {
     "Nasdaq Futures": "NQ=F", 
     "Gold Futures": "GC=F"
 }
+
+def get_boe_rate():
+    """Fetch current Bank of England interest rate"""
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get("https://www.bankofengland.co.uk")
+        time.sleep(5)  # Wait for page to load
+        
+        rate_element = driver.find_element(By.CSS_SELECTOR, "div.bank-rate__rate")
+        current_rate = rate_element.text.strip()
+        driver.quit()
+        
+        return {
+            "Asset": "Bank of England Rate",
+            "Last Price": current_rate,
+            "Change": "N/A",
+            "Change %": "N/A"
+        }
+    except Exception as e:
+        print(f"Error fetching BOE rate: {e}")
+        return {
+            "Asset": "Bank of England Rate",
+            "Last Price": "Error",
+            "Change": "N/A",
+            "Change %": "N/A"
+        }
 
 def get_market_data():
     """Fetch market data with enhanced error handling"""
@@ -61,6 +97,10 @@ def get_market_data():
         except Exception as e:
             print(f"Error fetching {name}: {str(e)}")
             data.append([name, "Error", "Error", "Error"])
+    
+    # Add BOE rate to the data
+    boe_data = get_boe_rate()
+    data.append([boe_data["Asset"], boe_data["Last Price"], boe_data["Change"], boe_data["Change %"]])
     
     return pd.DataFrame(data, columns=["Asset", "Last Price", "Change", "Change %"])
 
@@ -123,6 +163,10 @@ def format_html_report(df):
                 text-align: center;
                 margin-top: 20px;
             }}
+            .boe-row {{
+                background-color: #fffde7 !important;
+                font-weight: bold;
+            }}
         </style>
     </head>
     <body>
@@ -143,15 +187,19 @@ def format_html_report(df):
         # Add color coding based on change
         change_class = ""
         try:
-            if float(row['Change'].replace(',','')) > 0:
-                change_class = "positive"
-            elif float(row['Change'].replace(',','')) < 0:
-                change_class = "negative"
+            if row['Asset'] == 'Bank of England Rate':
+                row_class = "boe-row"
+            else:
+                row_class = ""
+                if float(row['Change'].replace(',','')) > 0:
+                    change_class = "positive"
+                elif float(row['Change'].replace(',','')) < 0:
+                    change_class = "negative"
         except:
             pass
         
         html += f"""
-                <tr>
+                <tr class="{row_class}">
                     <td>{row['Asset']}</td>
                     <td>{row['Last Price']}</td>
                     <td class="{change_class}">{row['Change']}</td>
@@ -163,7 +211,7 @@ def format_html_report(df):
             </tbody>
         </table>
         <div class="footer">
-            <p>Data source: Yahoo Finance | Report generated at {current_time}</p>
+            <p>Data sources: Yahoo Finance & Bank of England | Report generated at {current_time}</p>
         </div>
     </body>
     </html>
@@ -180,10 +228,10 @@ def send_email():
         # Initialize yagmail
         yag = yagmail.SMTP(EMAIL_ADDRESS, EMAIL_PASSWORD)
         yag.send(
-            to= TO_EMAILS ,
+            to=TO_EMAILS,
             subject=subject,
             contents=report_html, 
-            bcc= BCC_EMAILS
+            bcc=BCC_EMAILS
         )
         print("✅ Email sent successfully!")
     except Exception as e:

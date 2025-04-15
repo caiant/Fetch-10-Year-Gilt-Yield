@@ -9,8 +9,12 @@ import pytz
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
 import os
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 
 # Email credentials (use environment variables in production)
 EMAIL_ADDRESS = "cailin.antonio@glccap.com"
@@ -39,43 +43,76 @@ tickers = {
 }
 
 def get_boe_rate():
-    """Fetch current Bank of England interest rate"""
+    """Fetch current Bank of England Bank Rate from homepage"""
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--window-size=1920,1080")
         
-        driver = webdriver.Chrome(options=chrome_options)
+        # Use webdriver_manager to handle ChromeDriver automatically
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
         driver.get("https://www.bankofengland.co.uk")
-        time.sleep(5)  # Wait for page to load
         
-        rate_element = driver.find_element(By.CSS_SELECTOR, "div.bank-rate__rate")
-        current_rate = rate_element.text.strip()
+        # Wait for the Bank Rate component to load
+        rate_container = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div.bank-rate"))
+        
+        # Extract the rate and decision date
+        current_rate = WebDriverWait(rate_container, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "div.bank-rate__rate"))
+        ).text.strip()
+        
+        decision_date = WebDriverWait(rate_container, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "div.bank-rate__date"))
+        ).text.strip()
+        
+        # Take verification screenshot
+        os.makedirs("boe_screenshots", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        rate_container.screenshot(f"boe_screenshots/boe_rate_{timestamp}.png")
+        
         driver.quit()
         
         return {
-            "Asset": "Bank of England Rate",
+            "Asset": "BOE Bank Rate",
             "Last Price": current_rate,
             "Change": "N/A",
-            "Change %": "N/A"
+            "Change %": "N/A",
+            "Decision Date": decision_date
         }
+        
     except Exception as e:
         print(f"Error fetching BOE rate: {e}")
         return {
-            "Asset": "Bank of England Rate",
+            "Asset": "BOE Bank Rate",
             "Last Price": "Error",
             "Change": "N/A",
-            "Change %": "N/A"
+            "Change %": "N/A",
+            "Decision Date": "N/A"
         }
 
 def get_market_data():
     """Fetch market data with enhanced error handling"""
     data = []
+    
+    # Get BOE rate first (most important)
+    boe_data = get_boe_rate()
+    data.append([
+        boe_data["Asset"],
+        boe_data["Last Price"],
+        boe_data["Change"],
+        boe_data["Change %"]
+    ])
+    
+    # Get other market data
     for name, symbol in tickers.items():
         try:
             asset = yf.Ticker(symbol)
-            info = asset.history(period="2d")  # Get 2 days for proper change calculation
+            info = asset.history(period="2d")
             
             if not info.empty and len(info) >= 2:
                 last_close = info["Close"].iloc[-1]
@@ -98,15 +135,16 @@ def get_market_data():
             print(f"Error fetching {name}: {str(e)}")
             data.append([name, "Error", "Error", "Error"])
     
-    # Add BOE rate to the data
-    boe_data = get_boe_rate()
-    data.append([boe_data["Asset"], boe_data["Last Price"], boe_data["Change"], boe_data["Change %"]])
-    
     return pd.DataFrame(data, columns=["Asset", "Last Price", "Change", "Change %"])
 
-def format_html_report(df):
+def format_html_report(df, boe_decision_date):
     """Generate professional HTML report with proper styling"""
     current_time = datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d %H:%M %Z')
+    
+    # Add BOE decision date to header if available
+    boe_note = ""
+    if boe_decision_date and boe_decision_date != "N/A":
+        boe_note = f"<div style='margin-bottom:15px;'><strong>BOE Rate Decision:</strong> {boe_decision_date}</div>"
     
     html = f"""
     <html>
@@ -124,6 +162,7 @@ def format_html_report(df):
                 color: #2c3e50;
                 border-bottom: 2px solid #3498db;
                 padding-bottom: 10px;
+                margin-bottom: 10px;
             }}
             table {{
                 width: 100%;
@@ -163,14 +202,23 @@ def format_html_report(df):
                 text-align: center;
                 margin-top: 20px;
             }}
-            .boe-row {{
-                background-color: #fffde7 !important;
+            .boe-highlight {{
+                background-color: #e3f2fd;
                 font-weight: bold;
+                border-left: 4px solid #1976d2;
+            }}
+            .info-note {{
+                background-color: #e8f5e9;
+                padding: 8px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+                font-size: 14px;
             }}
         </style>
     </head>
     <body>
         <h2>📈 Daily Market Report - {current_time}</h2>
+        {boe_note}
         <table>
             <thead>
                 <tr>
@@ -184,19 +232,20 @@ def format_html_report(df):
     """
     
     for _, row in df.iterrows():
-        # Add color coding based on change
+        # Special formatting for BOE rate
+        row_class = "boe-highlight" if "BOE Bank Rate" in row['Asset'] else ""
+        
+        # Color coding for changes (except BOE rate)
         change_class = ""
-        try:
-            if row['Asset'] == 'Bank of England Rate':
-                row_class = "boe-row"
-            else:
-                row_class = ""
-                if float(row['Change'].replace(',','')) > 0:
+        if "BOE Bank Rate" not in row['Asset']:
+            try:
+                change_value = float(row['Change'].replace(',','').replace('%',''))
+                if change_value > 0:
                     change_class = "positive"
-                elif float(row['Change'].replace(',','')) < 0:
+                elif change_value < 0:
                     change_class = "negative"
-        except:
-            pass
+            except:
+                pass
         
         html += f"""
                 <tr class="{row_class}">
@@ -221,8 +270,15 @@ def format_html_report(df):
 def send_email():
     """Send formatted market report via email"""
     try:
-        df = get_market_data()
-        report_html = format_html_report(df)
+        # Get market data including BOE rate
+        market_data = get_market_data()
+        
+        # Get BOE decision date separately
+        boe_data = get_boe_rate()
+        decision_date = boe_data.get("Decision Date", "N/A")
+        
+        # Format report
+        report_html = format_html_report(market_data, decision_date)
         subject = f"Daily Market Report - {datetime.now().strftime('%Y-%m-%d')}"
         
         # Initialize yagmail
